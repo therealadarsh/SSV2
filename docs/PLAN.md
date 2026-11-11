@@ -127,10 +127,10 @@ Each phase ends with a gate. Don't start the next phase until the gate passes.
 - [x] Compare each change on the eval: keep only improvements, and record each in DECISIONS.md. Dense stays the default (nDCG@10 0.7127 vs hybrid 0.7085 vs rerank 0.7039)
 
 ### Phase 5: RAG (weeks 7–9)
-- [ ] `POST /v1/ask`: retrieve, then send the passages to Claude with citations turned on, and stream the answer
-- [ ] Say "I don't know" when retrieval finds nothing relevant
-- [ ] Answer-quality eval: faithfulness and correctness, scored by an LLM judge against a rubric
-- [ ] Token, cost and latency tracking per request
+- [x] `POST /v1/ask`: retrieve, then send the passages to Claude with citations turned on, and stream the answer
+- [x] Say "I don't know" when retrieval finds nothing relevant
+- [x] Answer-quality eval: faithfulness and correctness, scored by an LLM judge against a rubric
+- [x] Token, cost and latency tracking per request
 
 ### Phase 6: Agentic retrieval (later)
 - [ ] Expose search as a tool and an MCP server

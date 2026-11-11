@@ -29,27 +29,41 @@ SEARCH_PAGE = """<!DOCTYPE html>
   <label for="k">Results (1-100)</label>
   <input id="k" name="k" type="number" min="1" max="100" value="5">
   <button type="submit">Search</button>
+  <button type="button" id="ask">Ask</button>
 </form>
 <p id="status" role="status"></p>
+<p id="answer"></p>
 <ol id="hits"></ol>
 <script>
 const form = document.getElementById("ssv2-search");
 const status = document.getElementById("status");
 const hits = document.getElementById("hits");
+const answer = document.getElementById("answer");
 
-form.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  hits.replaceChildren();
+function readForm() {
   const query = document.getElementById("query").value.trim();
   const k = Number(document.getElementById("k").value);
   if (!query) {
     status.textContent = "Enter a query.";
-    return;
+    return null;
   }
   if (!Number.isInteger(k) || k < 1 || k > 100) {
     status.textContent = "Results must be a whole number from 1 to 100.";
+    return null;
+  }
+  return { query, k };
+}
+
+form.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  hits.replaceChildren();
+  answer.textContent = "";
+  const fields = readForm();
+  if (!fields) {
     return;
   }
+  const query = fields.query;
+  const k = fields.k;
   status.textContent = "Searching...";
   try {
     const response = await fetch("/v1/search", {
@@ -79,6 +93,38 @@ form.addEventListener("submit", async (event) => {
       const text = document.createElement("p");
       text.textContent = hit.text;
       item.append(title, score, text);
+      hits.append(item);
+    }
+  } catch {
+    status.textContent = "Could not reach the search service.";
+  }
+});
+
+document.getElementById("ask").addEventListener("click", async () => {
+  hits.replaceChildren();
+  answer.textContent = "";
+  const fields = readForm();
+  if (!fields) {
+    return;
+  }
+  status.textContent = "Asking...";
+  try {
+    const response = await fetch("/v1/ask", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ query: fields.query, k: fields.k }),
+    });
+    const body = await response.json();
+    if (!response.ok) {
+      const detail = body.detail || "Ask failed.";
+      status.textContent = typeof detail === "string" ? detail : "Ask failed.";
+      return;
+    }
+    answer.textContent = body.answer;
+    status.textContent = body.abstained ? "No relevant passages." : "Answered.";
+    for (const hit of body.hits) {
+      const item = document.createElement("li");
+      item.textContent = (hit.title || hit.id) + " (" + hit.id + ")";
       hits.append(item);
     }
   } catch {

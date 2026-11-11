@@ -10,24 +10,28 @@ no side effects, and each test can build an app with its own settings.
 import json
 import logging
 import time
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request, Response, status
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 
 from ssv2 import __version__
 from ssv2.api.page import SEARCH_PAGE
 from ssv2.api.schemas import (
+    AskRequest,
+    AskResponse,
     HealthResponse,
     InfoResponse,
     ReadyResponse,
     SearchHit,
     SearchRequest,
     SearchResponse,
+    UsageModel,
 )
 from ssv2.config import Settings, get_settings
 from ssv2.embedding import Embedder
+from ssv2.generate import Answer, LanguageModel, MissingModelError, ask, language_model_from_env
 from ssv2.retrieval import Retriever
 from ssv2.retrievers import build_retriever
 
@@ -38,6 +42,7 @@ def create_app(
     settings: Settings | None = None,
     retriever: Retriever | None = None,
     embedder: Embedder | None = None,
+    language_model: LanguageModel | None = None,
 ) -> FastAPI:
     """Build the app.
 
@@ -65,6 +70,9 @@ def create_app(
     app = FastAPI(title="SSV2", version=__version__, lifespan=lifespan)
     app.state.settings = settings
     app.state.ready = False
+    app.state.language_model = (
+        language_model if language_model is not None else language_model_from_env(settings)
+    )
     app.middleware("http")(_access_log_middleware)
 
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
@@ -120,7 +128,48 @@ def create_app(
             ) from exc
         return SearchResponse(hits=[SearchHit.model_validate(hit.model_dump()) for hit in hits])
 
+    @app.post("/v1/ask", tags=["search"], response_model=None)
+    def ask_route(body: AskRequest, request: Request) -> AskResponse | StreamingResponse:
+        """Retrieve, then answer from those passages. Abstains when nothing clears the floor."""
+        _require_ready(request)
+        try:
+            answer = ask(
+                request.app.state.retriever,
+                request.app.state.language_model,
+                body.query,
+                request.app.state.settings,
+                k=body.k,
+                filters=body.filters,
+            )
+        except MissingModelError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
+            ) from exc
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
+            ) from exc
+        payload = _ask_payload(answer)
+        if not body.stream:
+            return payload
+        return StreamingResponse(_events(payload), media_type="text/event-stream")
+
     return app
+
+
+def _ask_payload(answer: Answer) -> AskResponse:
+    return AskResponse(
+        answer=answer.answer,
+        abstained=answer.abstained,
+        hits=[SearchHit.model_validate(hit.model_dump()) for hit in answer.hits],
+        usage=UsageModel.model_validate(answer.usage.model_dump()),
+    )
+
+
+def _events(payload: AskResponse) -> Iterator[str]:
+    yield f"data: {json.dumps({'delta': payload.answer})}\n\n"
+    done = {"done": True, **payload.model_dump(mode="json")}
+    yield f"data: {json.dumps(done)}\n\n"
 
 
 async def _access_log_middleware(

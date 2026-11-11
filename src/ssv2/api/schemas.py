@@ -43,6 +43,35 @@ class SearchResponse(BaseModel):
     hits: list[SearchHit]
 
 
+class UsageModel(BaseModel):
+    input_tokens: int
+    output_tokens: int
+    cost_usd: float
+    latency_ms: float
+
+
+class AskRequest(BaseModel):
+    query: str = Field(min_length=1, max_length=4000)
+    k: int = Field(default=5, ge=MIN_K, le=MAX_K)
+    filters: dict[str, str] | None = None
+    stream: bool = False
+
+    @field_validator("query")
+    @classmethod
+    def _query_not_blank(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("query must not be blank")
+        return stripped
+
+
+class AskResponse(BaseModel):
+    answer: str
+    abstained: bool
+    hits: list[SearchHit]
+    usage: UsageModel
+
+
 class InfoResponse(BaseModel):
     dataset: str
     document_count: int

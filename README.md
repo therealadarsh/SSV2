@@ -39,6 +39,7 @@ container can answer a search with no network.
 | `GET /ready` | Readiness: model and index are loaded and the manifest matches; `503` otherwise |
 | `GET /v1/info` | Dataset, document count, embedding model, revision, build time |
 | `POST /v1/search` | `{"query": str, "k": int, "filters"?: {str: str}}` → hits with id, title, text, score, metadata |
+| `POST /v1/ask` | Retrieve, then answer with citations. `stream: true` returns server-sent events. Abstains with "I don't know." when dense hits fall below `SSV2_ABSTAIN_BELOW` (default 0.35). Needs `ANTHROPIC_API_KEY` |
 
 Configuration comes from `SSV2_*` environment variables, all defined in
 [src/ssv2/config.py](src/ssv2/config.py).
@@ -65,7 +66,8 @@ Configuration comes from `SSV2_*` environment variables, all defined in
 - A search page at `/`, and one JSON log line per request with its duration
 - Optional hybrid search and cross-encoder reranking (`SSV2_RETRIEVER=hybrid` or `rerank`). On SciFact both score below the dense default, so the default stays dense
 - `ssv2 index arxiv` indexes CC BY 4.0 computer-science papers from a pinned metadata shard
-- Still to come: RAG
+- `POST /v1/ask` answers from the retrieved passages, with token, cost and latency on each response. The page has an Ask button. Without `ANTHROPIC_API_KEY` the route returns 503
+- Still to come: agentic retrieval
 
 ## Where it comes from
 
