@@ -24,13 +24,19 @@ and a phase isn't done until its gate passes.
 ```bash
 make install     # uv sync, pre-commit install
 make lint        # ruff check + ruff format --check
-make typecheck   # pyright (or mypy)
+make typecheck   # mypy --strict
 make test        # pytest, unit tests only (fast, no model download)
-make index       # build the index for $DATASET (default: scifact)
-make eval        # scorecard: nDCG@10, recall@10, MRR@10
+make check       # lint + typecheck + test
+make index       # build the index for $DATASET (default: scifact)   [Phase 1]
+make eval        # scorecard: nDCG@10, recall@10, MRR@10              [Phase 2]
 make run         # API with reload at http://localhost:8000
 make smoke       # build the image, run it, query it
+make scan        # Trivy scan of the image (fails on fixable HIGH/CRITICAL)
 ```
+
+Behind a TLS-intercepting proxy (as in Claude Code cloud sessions), pass the proxy CA to the
+build: `make smoke DOCKER_BUILD_FLAGS="--network host --build-arg HTTPS_PROXY=$HTTPS_PROXY
+--build-arg https_proxy=$HTTPS_PROXY --secret id=extra_ca,src=/root/.ccr/ca-bundle.crt"`.
 
 ## Layout (target)
 
@@ -50,6 +56,9 @@ tests/             # unit (fast, fakes) and integration (marked, real model)
 
 ## Network note for Claude Code cloud sessions
 
-Model, dataset and CPU-only PyTorch downloads need `huggingface.co`, its file hosts and
-`download.pytorch.org`. These are allowed in the owner's "Dev" cloud environment, so run
-sessions there.
+Model, dataset and CPU-only PyTorch downloads need `huggingface.co`, its file hosts,
+`download.pytorch.org` and `download-r2.pytorch.org` (where the CPU wheels actually live).
+Docker builds also need `pkg-containers.githubusercontent.com` (ghcr.io image layers) and
+`deb.debian.org` (security updates). If Docker Hub answers `429 Too Many Requests`, start
+`dockerd --registry-mirror https://mirror.gcr.io`. All of these hosts are allowed in the
+owner's "Dev" cloud environment, so run sessions there.
