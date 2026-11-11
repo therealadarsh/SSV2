@@ -51,6 +51,17 @@ check() { # check <path> <expected JSON field status>
 check /health ok
 check /ready ready
 
+info=$(curl -fsS "$BASE/v1/info")
+echo "GET /v1/info -> $info"
+python3 -c 'import json, sys; b = json.loads(sys.argv[1]); assert b["dataset"] == "builtin", b; assert b["document_count"] == 4, b' \
+  "$info"
+
+search=$(curl -fsS -H 'content-type: application/json' \
+  -d '{"query":"liveness probe","k":1}' "$BASE/v1/search")
+echo "POST /v1/search -> $search"
+python3 -c 'import json, sys; b = json.loads(sys.argv[1]); assert b["hits"][0]["id"] == "health", b' \
+  "$search"
+
 user=$(docker exec "$NAME" id -u)
 echo "Runs as uid $user"
 [ "$user" != "0" ] || { echo "Container runs as root" >&2; exit 1; }

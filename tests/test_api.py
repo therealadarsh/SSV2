@@ -1,6 +1,7 @@
 """Unit tests for the HTTP layer. No model, no index, no network: they run in milliseconds."""
 
 from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
 from fastapi import FastAPI
@@ -9,11 +10,19 @@ from fastapi.testclient import TestClient
 from ssv2 import __version__
 from ssv2.api.app import create_app
 from ssv2.config import Settings
+from ssv2.documents import Document, passage_text
+from ssv2.index import IndexManifestError, build_index
+from tests.fakes import HashEmbedder, StubRetriever
 
 
 @pytest.fixture
-def app() -> FastAPI:
-    return create_app(Settings())
+def retriever() -> StubRetriever:
+    return StubRetriever()
+
+
+@pytest.fixture
+def app(retriever: StubRetriever) -> FastAPI:
+    return create_app(Settings(), retriever=retriever)
 
 
 @pytest.fixture
@@ -58,6 +67,86 @@ def test_settings_are_attached_to_the_app() -> None:
     assert create_app(settings).state.settings is settings
 
 
-def test_openapi_documents_both_endpoints(client: TestClient) -> None:
+def test_openapi_documents_the_endpoints(client: TestClient) -> None:
     paths = client.get("/openapi.json").json()["paths"]
-    assert {"/health", "/ready"} <= paths.keys()
+    assert {"/health", "/ready", "/v1/search", "/v1/info"} <= paths.keys()
+
+
+def test_search_returns_hits(client: TestClient, retriever: StubRetriever) -> None:
+    response = client.post(
+        "/v1/search", json={"query": "vitamin D", "k": 3, "filters": {"topic": "demo"}}
+    )
+    assert response.status_code == 200
+    assert response.json() == {
+        "hits": [
+            {
+                "id": "doc-1",
+                "title": "Stub title",
+                "text": "Stub body",
+                "score": 0.5,
+                "metadata": {"topic": "demo"},
+            }
+        ]
+    }
+    assert retriever.calls == [("vitamin D", 3, {"topic": "demo"})]
+
+
+def test_search_rejects_a_blank_query_and_a_k_out_of_range(client: TestClient) -> None:
+    assert client.post("/v1/search", json={"query": "  "}).status_code == 422
+    assert client.post("/v1/search", json={"query": "ok", "k": 0}).status_code == 422
+    assert client.post("/v1/search", json={"query": "ok", "k": 101}).status_code == 422
+
+
+def test_search_is_503_when_not_ready(app: FastAPI, client: TestClient) -> None:
+    app.state.ready = False
+    response = client.post("/v1/search", json={"query": "vitamin D"})
+    assert response.status_code == 503
+
+
+def test_info_reports_the_manifest(client: TestClient) -> None:
+    response = client.get("/v1/info")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["dataset"] == "stub"
+    assert body["document_count"] == 1
+    assert body["embedding_model"] == "fake/hash"
+    assert body["embedding_model_revision"] == "a" * 40
+    assert body["built_at"].startswith("2026-11-11")
+
+
+def test_app_loads_an_index_and_searches_it(tmp_path: Path) -> None:
+    embedder = HashEmbedder()
+    document = Document(
+        id="only", title="Only", text="unique phrase", source="fixture", license="MIT"
+    )
+    build_index([document], embedder, tmp_path, dataset="fixture")
+    settings = Settings(
+        embedding_model=embedder.model_id,
+        embedding_model_revision=embedder.revision,
+        index_dir=tmp_path,
+    )
+    app = create_app(settings, embedder=embedder)
+    with TestClient(app) as client:
+        info = client.get("/v1/info")
+        assert info.status_code == 200
+        assert info.json()["dataset"] == "fixture"
+        assert info.json()["document_count"] == 1
+        found = client.post("/v1/search", json={"query": passage_text(document), "k": 1})
+        assert found.status_code == 200
+        assert found.json()["hits"][0]["id"] == "only"
+
+
+def test_startup_refuses_an_index_from_another_model(tmp_path: Path) -> None:
+    embedder = HashEmbedder()
+    document = Document(
+        id="only", title="Only", text="unique phrase", source="fixture", license="MIT"
+    )
+    build_index([document], embedder, tmp_path, dataset="fixture")
+    settings = Settings(
+        embedding_model="other/model",
+        embedding_model_revision=embedder.revision,
+        index_dir=tmp_path,
+    )
+    app = create_app(settings, embedder=embedder)
+    with pytest.raises(IndexManifestError, match="other/model"), TestClient(app):
+        pass

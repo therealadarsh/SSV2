@@ -30,6 +30,13 @@ class Settings(BaseSettings):
         default=Path("indexes/scifact"),
         description="Directory holding the built index (vectors, documents, manifest).",
     )
+    embedding_model_dir: Path | None = Field(
+        default=None,
+        description=(
+            "Local directory that already contains the embedding model. "
+            "When set, weights are read from here and nothing is downloaded."
+        ),
+    )
 
     @field_validator("embedding_model_revision")
     @classmethod

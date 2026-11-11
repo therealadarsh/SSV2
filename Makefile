@@ -17,7 +17,9 @@ UV_RUN := uv run --locked
 UV_RUN_LINT := uv run --locked --only-group lint
 
 .DEFAULT_GOAL := help
-.PHONY: help install lint format typecheck test check run docker-build smoke-test smoke scan clean
+DATASET ?= scifact
+
+.PHONY: help install lint format typecheck test check index run docker-build smoke-test smoke scan clean
 
 help: ## Show this help
 	@grep -hE '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-13s %s\n", $$1, $$2}'
@@ -41,6 +43,9 @@ test: ## Unit tests only (fast: no model download)
 	$(UV_RUN) pytest -m "not integration"
 
 check: lint typecheck test ## lint + typecheck + test
+
+index: ## Build the $(DATASET) index into indexes/ (default: scifact)
+	$(UV_RUN) ssv2 index $(DATASET) --output indexes/$(DATASET)
 
 run: ## API with auto-reload on http://localhost:8000 (docs at /docs)
 	$(UV_RUN) uvicorn ssv2.api.app:create_app --factory --reload

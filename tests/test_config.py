@@ -10,6 +10,7 @@ def test_defaults_match_the_plan() -> None:
     settings = Settings()
     assert settings.embedding_model == "BAAI/bge-small-en-v1.5"
     assert settings.embedding_model_revision == "5c38ec7c405ec4b44b94cc5a9bb96e735b38267a"
+    assert settings.embedding_model_dir is None
 
 
 def test_environment_variables_override_defaults(monkeypatch: pytest.MonkeyPatch) -> None:

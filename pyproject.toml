@@ -18,10 +18,17 @@ dependencies = [
     "sentence-transformers>=6.2",
     "faiss-cpu>=1.15",
     "numpy>=2.5",
+    # Direct imports, not just transitive. The SciFact loader downloads a pinned
+    # parquet file with huggingface-hub and reads it with pyarrow.
+    "huggingface-hub>=2.4",
+    "pyarrow>=18",
 ]
 
 [project.urls]
 Repository = "https://github.com/therealadarsh/SSV2"
+
+[project.scripts]
+ssv2 = "ssv2.cli:main"
 
 # Development tools live in PEP 735 dependency groups: they are locked in uv.lock but never
 # installed into the Docker image. Separate groups let a CI job install only what it needs
@@ -100,6 +107,10 @@ warn_unreachable = true
 [tool.pydantic-mypy]
 init_forbid_extra = true
 init_typed = true
+
+[[tool.mypy.overrides]]
+module = ["faiss", "faiss.*", "pyarrow", "pyarrow.*"]
+ignore_missing_imports = true
 
 # --- pytest -----------------------------------------------------------------------------
 
