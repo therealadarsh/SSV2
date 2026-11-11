@@ -4,9 +4,10 @@ A retrieval service you can trust because it measures itself. It answers search 
 a document collection with ranked, scored results. Every change is checked against a
 labelled benchmark in CI, so "search got better" is a number, not a feeling.
 
-> **Status: v0.1.0 (MVP).** Search at `/` and `POST /v1/search`. `make eval` scores SciFact
-> and CI fails if nDCG@10 drops below 0.6827. Latest scorecard: nDCG@10 0.7127, recall@10
-> 0.8362, MRR@10 0.6822 (0-1 scale, 300 test queries). Warmed SciFact search p95 is 9.6 ms.
+> **Status: v0.1.0, through Phase 6.** Search, eval, a search page, optional hybrid and
+> rerank, cited answers, and an MCP search tool. The default retriever searches again when
+> the top cosine is below 0.80. Latest SciFact scorecard: nDCG@10 0.7140, recall@10 0.8396,
+> MRR@10 0.6826 (0-1 scale, 300 test queries). CI fails if nDCG@10 drops below 0.6827.
 > See [docs/PLAN.md](docs/PLAN.md).
 
 ## Quick start
@@ -64,7 +65,8 @@ Configuration comes from `SSV2_*` environment variables, all defined in
 - A generic ingestion pipeline: any corpus goes in through one document schema
 - `make eval` reports nDCG@10, recall@10 and MRR@10 on SciFact and fails under the floor
 - A search page at `/`, and one JSON log line per request with its duration
-- Optional hybrid search and cross-encoder reranking (`SSV2_RETRIEVER=hybrid` or `rerank`). On SciFact both score below the dense default, so the default stays dense
+- The default retriever (`SSV2_RETRIEVER=agent`) does a second search when the top cosine is below 0.80 and merges with reciprocal rank fusion. `SSV2_RETRIEVER=dense` is the single search. Hybrid and rerank remain available and both score below dense on SciFact
+- `ssv2 mcp` serves that search as an MCP tool on stdin and stdout
 - `ssv2 index arxiv` indexes CC BY 4.0 computer-science papers from a pinned metadata shard
 - `POST /v1/ask` answers from the retrieved passages, with token, cost and latency on each response. The page has an Ask button. Without `ANTHROPIC_API_KEY` the route returns 503
 - Still to come: agentic retrieval

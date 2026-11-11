@@ -15,6 +15,10 @@ def build_retriever(index_dir: Path, embedder: Embedder, settings: Settings) -> 
         from ssv2.hybrid import HybridRetriever
 
         return HybridRetriever(dense)
+    if settings.retriever == "agent":
+        from ssv2.agent import AgenticRetriever
+
+        return AgenticRetriever(dense)
     from ssv2.rerank import CrossEncoderReranker, RerankedRetriever
 
     return RerankedRetriever(dense, CrossEncoderReranker(settings))

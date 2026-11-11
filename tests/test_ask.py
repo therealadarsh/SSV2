@@ -56,7 +56,7 @@ def test_cost_is_the_published_per_million_rate() -> None:
 
 def test_a_weak_dense_hit_abstains_without_calling_the_model() -> None:
     model = EchoModel()
-    answer = ask(OneHit(0.2), model, "why", Settings(), k=3)
+    answer = ask(OneHit(0.2), model, "why", Settings(retriever="dense"), k=3)
     assert answer.abstained is True
     assert answer.answer == ABSTAIN
     assert answer.hits == []
