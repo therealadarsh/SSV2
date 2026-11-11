@@ -51,11 +51,13 @@ Configuration comes from `SSV2_*` environment variables, all defined in
   `typecheck` and `test` in parallel, then `eval` and `docker` (build, smoke test, Trivy scan).
   Each step is a `make` target, so any failure reproduces locally. `eval` caches the Hugging
   Face model and `indexes/scifact`.
-- **Release** ([release.yml](.github/workflows/release.yml)), on a `v*.*.*` tag: re-runs CI,
-  then pushes the image to `ghcr.io` with an SBOM and a signed provenance attestation.
-  The package version is `0.1.0`. After the MVP commit is on `main`, publish with
-  `git tag v0.1.0 && git push origin v0.1.0`. Tag protection rejects that push until the
-  commit is on `main`, so the tag is not created from a feature branch.
+- **Release** ([release.yml](.github/workflows/release.yml) and
+  [release-request.yml](.github/workflows/release-request.yml)): re-runs CI, then pushes
+  the image to `ghcr.io` with an SBOM and a signed provenance attestation. The package
+  version is `0.1.0`. Merging a pull request that sets
+  [.github/RELEASE](.github/RELEASE) to that version creates the tag and publishes the
+  image as the account that merged. `git tag v0.1.0 && git push origin v0.1.0` publishes
+  the same way. Tag protection rejects a tag push until the commit is on `main`.
 - **Dependabot** ([dependabot.yml](.github/dependabot.yml)) bumps actions, base images and
   `uv.lock` weekly, after a 7-day cooldown.
 

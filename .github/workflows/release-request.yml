@@ -1,0 +1,85 @@
+# Merging a pull request that changes .github/RELEASE publishes that version.
+# The workflow runs as the account that merged, and that account is the GHCR login.
+# The tag push uses the workflow token. A tag push from this token does not start
+# release.yml, so the image is published in this workflow after the tag exists.
+name: Release request
+
+on:
+  push:
+    branches: [main]
+    paths: [".github/RELEASE"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-request-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Read the release tag
+        id: version
+        run: |
+          set -eu
+          tag=$(tr -d '[:space:]' < .github/RELEASE)
+          printf '%s\n' "$tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'
+          version=${tag#v}
+          py=$(python3 -c 'import tomllib; print(tomllib.load(open("pyproject.toml","rb"))["project"]["version"])')
+          test "$py" = "$version"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+  ci:
+    needs: prepare
+    uses: ./.github/workflows/ci.yml
+
+  tag:
+    needs: [prepare, ci]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Create the release tag
+        env:
+          TAG: ${{ needs.prepare.outputs.tag }}
+          ACTOR: ${{ github.actor }}
+          ACTOR_ID: ${{ github.actor_id }}
+        run: |
+          set -eu
+          git config user.name "$ACTOR"
+          git config user.email "${ACTOR_ID}+${ACTOR}@users.noreply.github.com"
+          if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
+            current=$(git rev-list -n 1 "$TAG")
+            if [ "$current" != "$GITHUB_SHA" ]; then
+              echo "tag $TAG already points at $current, not $GITHUB_SHA" >&2
+              exit 1
+            fi
+            echo "tag $TAG already points at this commit"
+            exit 0
+          fi
+          git tag -a "$TAG" -m "Release $TAG"
+          git push origin "refs/tags/${TAG}"
+
+  publish:
+    needs: [prepare, tag]
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    uses: ./.github/workflows/publish-image.yml
+    with:
+      tag: ${{ needs.prepare.outputs.tag }}
