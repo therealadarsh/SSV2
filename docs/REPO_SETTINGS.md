@@ -18,8 +18,8 @@ Choose **New ruleset → Import a ruleset** and upload each file:
 Neither ruleset has bypass actors, so the rules apply to you too. That's deliberate.
 
 **After Phase 0's CI is merged**, edit "Protect main", add **Require status checks to pass**,
-and select `lint`, `typecheck`, `test` and `docker` (plus `eval` once Phase 2 lands). Don't add them
-earlier: a required check that never runs blocks every merge.
+and select `lint`, `typecheck`, `test`, `docker` and `eval`. The `eval` job exists as of Phase 2.
+Don't add a check that never runs: a required check with no workflow blocks every merge.
 
 ## 2. General (Settings → General)
 

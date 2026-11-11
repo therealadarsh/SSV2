@@ -13,9 +13,17 @@ from pathlib import Path
 
 from ssv2.config import Settings, get_settings
 from ssv2.embedding import Embedder
+from ssv2.evals.run import EVAL_K, score_retrieval, write_scorecard
 from ssv2.index import IndexManifestError, build_index
 from ssv2.loaders.jsonl import load_jsonl
-from ssv2.loaders.scifact import download_scifact_corpus, load_scifact_corpus
+from ssv2.loaders.scifact import (
+    download_scifact_corpus,
+    download_scifact_qrels,
+    download_scifact_queries,
+    load_qrels_tsv,
+    load_scifact_corpus,
+    load_scifact_queries,
+)
 from ssv2.retrieval import MAX_K, MIN_K, DenseRetriever, Hit
 
 _DATASET_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
@@ -33,6 +41,8 @@ def main(
     try:
         if args.command == "search":
             return _search(args, embedder_factory or _real_embedder)
+        if args.command == "eval":
+            return _eval(args, embedder_factory or _real_embedder)
         return _index(args, embedder_factory or _real_embedder)
     except (FileNotFoundError, IndexManifestError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
@@ -65,6 +75,17 @@ def _parser() -> argparse.ArgumentParser:
         "--index", type=Path, default=None, help="Index directory (default: SSV2_INDEX_DIR)"
     )
     search.add_argument("--json", action="store_true", help="Print hits as JSON")
+
+    evaluate = subcommands.add_parser("eval", help="Score the index on the SciFact test split")
+    evaluate.add_argument("--index", type=Path, default=None, help="Index directory")
+    evaluate.add_argument(
+        "--queries", type=Path, default=None, help="Queries parquet (default: pinned SciFact)"
+    )
+    evaluate.add_argument(
+        "--qrels", type=Path, default=None, help="Qrels TSV (default: pinned test split)"
+    )
+    evaluate.add_argument("--output", type=Path, default=None, help="Scorecard JSON path")
+    evaluate.add_argument("-k", type=int, default=EVAL_K, help=f"Cutoff (default {EVAL_K})")
     return parser
 
 
@@ -107,6 +128,32 @@ def _search(args: argparse.Namespace, embedder_factory: EmbedderFactory) -> int:
         print(json.dumps({"hits": [hit.model_dump(mode="json") for hit in hits]}, indent=2))
     else:
         _print_hits(hits)
+    return 0
+
+
+def _eval(args: argparse.Namespace, embedder_factory: EmbedderFactory) -> int:
+    if args.k < MIN_K or args.k > MAX_K:
+        print(f"k must be between {MIN_K} and {MAX_K}", file=sys.stderr)
+        return 2
+    settings = get_settings()
+    if args.index is not None:
+        settings = settings.model_copy(update={"index_dir": args.index})
+    queries = load_scifact_queries(
+        args.queries if args.queries is not None else download_scifact_queries()
+    )
+    qrels = load_qrels_tsv(args.qrels if args.qrels is not None else download_scifact_qrels())
+    retriever = DenseRetriever(settings.index_dir, embedder_factory(settings), settings)
+    scorecard = score_retrieval(retriever, queries, qrels, dataset="scifact", k=args.k)
+    destination = args.output if args.output is not None else settings.index_dir / "scorecard.json"
+    write_scorecard(scorecard, destination)
+    print(scorecard.model_dump_json(indent=2))
+    if not scorecard.passed:
+        print(
+            f"nDCG@{scorecard.k} {scorecard.ndcg_at_k:.4f} is below the floor "
+            f"{scorecard.ndcg_at_10_floor:.4f}",
+            file=sys.stderr,
+        )
+        return 1
     return 0
 
 

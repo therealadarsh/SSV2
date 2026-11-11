@@ -67,6 +67,28 @@ jobs:
           enable-cache: true
       - run: make test
 
+  eval:
+    needs: [lint, typecheck, test]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.7"
+          enable-cache: true
+      # The model and the SciFact index are large and slow to rebuild. The key covers the
+      # files that change vectors, so a retrieval change does not reuse a stale index.
+      - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: |
+            ~/.cache/huggingface
+            indexes/scifact
+          key: eval-scifact-${{ hashFiles('uv.lock', 'src/ssv2/embedding.py', 'src/ssv2/index.py', 'src/ssv2/retrieval.py', 'src/ssv2/documents.py', 'src/ssv2/loaders/scifact.py') }}
+      - run: make eval
+
   docker:
     needs: [lint, typecheck, test]
     runs-on: ubuntu-24.04

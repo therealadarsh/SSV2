@@ -4,9 +4,9 @@ A retrieval service you can trust because it measures itself. It answers search 
 a document collection with ranked, scored results. Every change is checked against a
 labelled benchmark in CI, so "search got better" is a number, not a feeling.
 
-> **Status: Phase 1 (index and search).** `ssv2 search` and `POST /v1/search` answer from a
-> dense index. The evaluation harness is Phase 2. See [docs/PLAN.md](docs/PLAN.md) and
-> [docs/HANDOFF.md](docs/HANDOFF.md).
+> **Status: Phase 2 (evaluation).** `make eval` scores SciFact and CI fails if nDCG@10 drops
+> below 0.6827. The latest scorecard is nDCG@10 0.7127, recall@10 0.8362, MRR@10 0.6822
+> (0-1 scale, 300 test queries). See [docs/PLAN.md](docs/PLAN.md).
 
 ## Quick start
 
@@ -16,6 +16,7 @@ Needs [uv](https://docs.astral.sh/uv/) and Docker. uv installs Python 3.12 if yo
 make install     # .venv from uv.lock (CPU-only PyTorch) + git pre-commit hook
 make check       # lint + typecheck + unit tests: what CI's first three jobs run
 make index       # download SciFact and build indexes/scifact (needs the network)
+make eval        # nDCG@10, recall@10, MRR@10; fails under the floor
 make run         # API with auto-reload: http://localhost:8000/docs
 ssv2 search "a scientific claim"    # query the index you just built
 make smoke       # build the image, run it hardened, query health, ready and search
@@ -42,8 +43,9 @@ Configuration comes from `SSV2_*` environment variables, all defined in
 ## CI/CD
 
 - **CI** ([ci.yml](.github/workflows/ci.yml)), on every PR and push to `main`: `lint`,
-  `typecheck` and `test` in parallel, then `docker` (build, smoke test, Trivy scan). Each step
-  is a `make` target, so any failure reproduces locally.
+  `typecheck` and `test` in parallel, then `eval` and `docker` (build, smoke test, Trivy scan).
+  Each step is a `make` target, so any failure reproduces locally. `eval` caches the Hugging
+  Face model and `indexes/scifact`.
 - **Release** ([release.yml](.github/workflows/release.yml)), on a `v*.*.*` tag: re-runs CI,
   then pushes the image to `ghcr.io` with an SBOM and a signed provenance attestation.
 - **Dependabot** ([dependabot.yml](.github/dependabot.yml)) bumps actions, base images and
@@ -53,8 +55,8 @@ Configuration comes from `SSV2_*` environment variables, all defined in
 
 - `POST /v1/search` returns the top matching documents, with scores and metadata
 - A generic ingestion pipeline: any corpus goes in through one document schema
-- Still to come: an evaluation harness (recall@k, nDCG@k, MRR) on every PR, a minimal
-  search page, then hybrid search, reranking, and RAG
+- `make eval` reports nDCG@10, recall@10 and MRR@10 on SciFact and fails under the floor
+- Still to come: a minimal search page, then hybrid search, reranking, and RAG
 
 ## Where it comes from
 
