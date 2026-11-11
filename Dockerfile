@@ -3,8 +3,10 @@
 # Stages, so the final image holds only what runs in production:
 #   uv       -> the uv binary (an image of its own, so Dependabot can bump its digest)
 #   builder  -> installs the locked dependencies, then the ssv2 package, into /opt/venv
-#   runtime  -> a fresh slim Python with just /opt/venv; runs as a non-root user
-# Phase 1 adds an `index` stage that downloads the pinned model and builds the index.
+#   index    -> downloads the pinned model and indexes the built-in corpus
+#   runtime  -> a fresh slim Python with the venv, the model cache and that index; non-root
+# The `index` stage downloads the pinned model and builds a tiny built-in index.
+# SciFact is non-commercial and is not copied into the image; `make index` builds it locally.
 #
 # Every base image is pinned by digest: a tag like `3.12-slim` can be re-pointed upstream,
 # a digest can't. Dependabot opens PRs to bump both together.
@@ -50,6 +52,21 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-dev --no-editable
 
 # ---------------------------------------------------------------------------------------
+# Download the pinned model and index the built-in corpus. The corpus is project text
+# (MIT), not SciFact: SciFact is non-commercial and stays out of the published image.
+FROM builder AS index
+
+ENV HF_HOME=/opt/hf \
+    HF_HUB_DISABLE_TELEMETRY=1 \
+    HF_HUB_ENABLE_HF_TRANSFER=0
+
+COPY assets/builtin.jsonl /src/assets/builtin.jsonl
+RUN --mount=type=secret,id=extra_ca,required=false \
+    if [ -f /run/secrets/extra_ca ]; then export SSL_CERT_FILE=/run/secrets/extra_ca; fi; \
+    mkdir -p /opt/hf /opt/index \
+ && /opt/venv/bin/ssv2 index jsonl /src/assets/builtin.jsonl --dataset builtin --output /opt/index
+
+# ---------------------------------------------------------------------------------------
 FROM python:3.12-slim-trixie@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b AS runtime
 
 ENV PATH=/opt/venv/bin:$PATH \
@@ -57,6 +74,10 @@ ENV PATH=/opt/venv/bin:$PATH \
     PYTHONUNBUFFERED=1 \
     # Nothing may be downloaded at runtime: the image must contain everything it needs.
     HF_HUB_OFFLINE=1 \
+    TRANSFORMERS_OFFLINE=1 \
+    HF_HUB_DISABLE_TELEMETRY=1 \
+    HF_HOME=/opt/hf \
+    SSV2_INDEX_DIR=/opt/index \
     PORT=8000
 
 # Install Debian security fixes released since the base image was built (the Trivy scan in CI
@@ -75,6 +96,8 @@ RUN --mount=type=secret,id=extra_ca,required=false,mode=0444 \
 RUN useradd --create-home --uid 10001 app
 # Owned by root and read-only to `app`: a compromised process can't modify the code it runs.
 COPY --from=builder /opt/venv /opt/venv
+COPY --from=index /opt/index /opt/index
+COPY --from=index /opt/hf /opt/hf
 
 USER app
 WORKDIR /home/app

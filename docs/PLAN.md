@@ -102,10 +102,10 @@ Each phase ends with a gate. Don't start the next phase until the gate passes.
 - **Gate:** a PR with green CI; after merge, add `lint`, `typecheck`, `test` and `docker` as required checks (docs/REPO_SETTINGS.md)
 
 ### Phase 1: Ingestion, index, search (week 2)
-- [ ] Document schema; SciFact loader; JSONL loader for any corpus
-- [ ] Embedder (pinned model) and index build: FAISS flat inner-product index on normalized vectors, `docs.jsonl` and `manifest.json`
-- [ ] `POST /v1/search`, `GET /v1/info`, and the model/manifest check at startup
-- [ ] CLI: `ssv2 index`, `ssv2 search "..."`
+- [x] Document schema; SciFact loader; JSONL loader for any corpus
+- [x] Embedder (pinned model) and index build: FAISS flat inner-product index on normalized vectors, `docs.jsonl` and `manifest.json`
+- [x] `POST /v1/search`, `GET /v1/info`, and the model/manifest check at startup
+- [x] CLI: `ssv2 index`, `ssv2 search "..."`
 - **Gate:** `ssv2 search` returns sensible results on SciFact, and the API serves them
 
 ### Phase 2: Evaluation harness (week 3)
