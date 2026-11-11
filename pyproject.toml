@@ -1,0 +1,114 @@
+[project]
+name = "ssv2"
+version = "0.1.0.dev0"
+description = "A retrieval service that measures its own quality."
+license = "MIT"
+# One Python minor version everywhere (local, CI, Docker). Upgrading is a deliberate change.
+requires-python = "==3.12.*"
+# Lower bounds only: the exact versions of these and every transitive dependency are pinned
+# in uv.lock. Dependabot bumps the lockfile.
+dependencies = [
+    "fastapi>=0.162",
+    "pydantic>=2.14",
+    "pydantic-settings>=2.16",
+    "uvicorn>=0.54",
+    # The ML stack is not imported until Phase 1, but it is locked now so the CPU-only
+    # PyTorch setup is proven (and its image size known) before any model code exists.
+    "torch>=2.15",
+    "sentence-transformers>=6.2",
+    "faiss-cpu>=1.15",
+    "numpy>=2.5",
+]
+
+[project.urls]
+Repository = "https://github.com/therealadarsh/SSV2"
+
+# Development tools live in PEP 735 dependency groups: they are locked in uv.lock but never
+# installed into the Docker image. Separate groups let a CI job install only what it needs
+# (the lint job installs ruff alone, not PyTorch).
+[dependency-groups]
+lint = ["ruff>=0.17"]
+typecheck = ["mypy>=2.4"]
+test = ["pytest>=9.2", "httpx>=0.28"]
+dev = [
+    { include-group = "lint" },
+    { include-group = "typecheck" },
+    { include-group = "test" },
+    "pre-commit>=4.7",
+]
+
+[build-system]
+requires = ["uv_build>=0.13.7,<0.14"]
+build-backend = "uv_build"
+
+# --- uv ---------------------------------------------------------------------------------
+
+[tool.uv]
+# Resolve the lockfile only for platforms we use (CI and Docker on x86_64 Linux, ARM Linux
+# hosts, Apple Silicon Macs). Without this, uv also resolves s390x, ppc64le, Windows, etc.
+environments = [
+    "sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "sys_platform == 'linux' and platform_machine == 'aarch64'",
+    "sys_platform == 'darwin' and platform_machine == 'arm64'",
+]
+# Supply-chain cooldown: ignore releases younger than 7 days. Malicious or broken releases
+# are usually caught and yanked within days. Dependabot uses the same cooldown.
+exclude-newer = "7 days"
+
+# PyPI's default torch wheel for Linux bundles CUDA (several GB of nvidia-* packages).
+# The PyTorch CPU index has CPU-only wheels. `explicit = true` means only packages pinned to
+# this index below are fetched from it; everything else still comes from PyPI.
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+# macOS wheels on PyPI are already CPU (plus Apple MPS), so only Linux needs the CPU index.
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+
+# --- ruff -------------------------------------------------------------------------------
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E", "W",  # pycodestyle
+    "F",       # pyflakes: unused imports, undefined names
+    "I",       # import sorting
+    "UP",      # pyupgrade: modern syntax
+    "B",       # bugbear: likely bugs
+    "SIM",     # simplifications
+    "S",       # bandit: security smells
+    "PT",      # pytest style
+    "RUF",     # ruff-specific checks
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"] # assert is how pytest works
+
+# --- mypy -------------------------------------------------------------------------------
+
+[tool.mypy]
+files = ["src", "tests"]
+strict = true
+plugins = ["pydantic.mypy"]
+warn_unreachable = true
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+
+# --- pytest -----------------------------------------------------------------------------
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ["-ra", "--strict-markers", "--strict-config"]
+# Turn warnings into failures so deprecations are fixed when they appear, not after an upgrade
+# breaks something.
+filterwarnings = ["error"]
+markers = [
+    "integration: needs the real model or network; excluded from `make test`",
+]

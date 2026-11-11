@@ -4,7 +4,39 @@ A retrieval service you can trust because it measures itself. It answers search 
 a document collection with ranked, scored results. Every change is checked against a
 labelled benchmark in CI, so "search got better" is a number, not a feeling.
 
-> **Status: planning.** No code yet. Start with [docs/PLAN.md](docs/PLAN.md).
+> **Status: Phase 0 (skeleton and pipeline).** The service starts and reports health; search
+> arrives in Phase 1. See [docs/PLAN.md](docs/PLAN.md).
+
+## Quick start
+
+Needs [uv](https://docs.astral.sh/uv/) and Docker. uv installs Python 3.12 if you don't have it.
+
+```bash
+make install     # .venv from uv.lock (CPU-only PyTorch) + git pre-commit hook
+make check       # lint + typecheck + unit tests: what CI's first three jobs run
+make run         # API with auto-reload: http://localhost:8000/docs
+make smoke       # build the image, run it hardened, query /health and /ready
+make scan        # Trivy: fail on fixable HIGH/CRITICAL CVEs in the image
+make help        # every target
+```
+
+| Endpoint | Meaning |
+| --- | --- |
+| `GET /health` | Liveness: the process is up (used by the Docker `HEALTHCHECK`) |
+| `GET /ready` | Readiness: everything needed to serve is loaded; `503` otherwise |
+
+Configuration comes from `SSV2_*` environment variables, all defined in
+[src/ssv2/config.py](src/ssv2/config.py).
+
+## CI/CD
+
+- **CI** ([ci.yml](.github/workflows/ci.yml)), on every PR and push to `main`: `lint`,
+  `typecheck` and `test` in parallel, then `docker` (build, smoke test, Trivy scan). Each step
+  is a `make` target, so any failure reproduces locally.
+- **Release** ([release.yml](.github/workflows/release.yml)), on a `v*.*.*` tag: re-runs CI,
+  then pushes the image to `ghcr.io` with an SBOM and a signed provenance attestation.
+- **Dependabot** ([dependabot.yml](.github/dependabot.yml)) bumps actions, base images and
+  `uv.lock` weekly, after a 7-day cooldown.
 
 ## What it will do
 

@@ -1,0 +1,8 @@
+# Allow-list: send the build only what the image needs. Anything new (an .env file, a data
+# dump, a local index) stays out by default instead of leaking into the image.
+*
+!pyproject.toml
+!uv.lock
+!.python-version
+!src/
+**/__pycache__

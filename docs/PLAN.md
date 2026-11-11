@@ -95,11 +95,11 @@ configurable. Compare alternatives only through the eval, never by reputation.
 Each phase ends with a gate. Don't start the next phase until the gate passes.
 
 ### Phase 0: Skeleton and pipeline (week 1)
-- [ ] `src/ssv2/` package, `pyproject.toml`, `uv.lock` with CPU-only PyTorch from the PyTorch index
-- [ ] FastAPI app with `/health` and `/ready`; ruff, pyright or mypy, pytest, pre-commit, Makefile
-- [ ] Multi-stage Dockerfile; CI (lint, types, tests, Docker build, smoke test); Dependabot
-- [ ] Release workflow (tag → GHCR + provenance), copied and adapted from Semantic-Search
-- **Gate:** a PR with green CI; after merge, add `lint`, `test` and `docker` as required checks (docs/REPO_SETTINGS.md)
+- [x] `src/ssv2/` package, `pyproject.toml`, `uv.lock` with CPU-only PyTorch from the PyTorch index
+- [x] FastAPI app with `/health` and `/ready`; ruff, mypy, pytest, pre-commit, Makefile
+- [x] Multi-stage Dockerfile; CI (lint, types, tests, Docker build, smoke test, Trivy scan); Dependabot
+- [x] Release workflow (tag → GHCR + provenance), copied and adapted from Semantic-Search
+- **Gate:** a PR with green CI; after merge, add `lint`, `typecheck`, `test` and `docker` as required checks (docs/REPO_SETTINGS.md)
 
 ### Phase 1: Ingestion, index, search (week 2)
 - [ ] Document schema; SciFact loader; JSONL loader for any corpus
