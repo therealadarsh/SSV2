@@ -1,0 +1,5 @@
+# The owner is requested for review on every PR. CI, Docker and repo-settings files
+# are listed separately so they stay owner-reviewed even if more owners are added above.
+*                 @therealadarsh
+/.github/         @therealadarsh
+/Dockerfile       @therealadarsh

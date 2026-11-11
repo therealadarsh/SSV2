@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# Secrets: never commit these
+.env
+.env.*
+!.env.example
+
+# Generated data, models and indexes (built by `make index`, never committed)
+data/
+indexes/
+models/
+*.faiss
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
