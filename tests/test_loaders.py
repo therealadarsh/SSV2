@@ -10,9 +10,17 @@ from ssv2.loaders.scifact import (
     SCIFACT_CORPUS_FILE,
     SCIFACT_DATASET,
     SCIFACT_LICENSE,
+    SCIFACT_QRELS_DATASET,
+    SCIFACT_QRELS_FILE,
+    SCIFACT_QRELS_REVISION,
+    SCIFACT_QUERIES_FILE,
     SCIFACT_REVISION,
     download_scifact_corpus,
+    download_scifact_qrels,
+    download_scifact_queries,
+    load_qrels_tsv,
     load_scifact_corpus,
+    load_scifact_queries,
 )
 
 
@@ -73,6 +81,46 @@ def test_scifact_loader_records_the_noncommercial_license(tmp_path: Path) -> Non
     assert documents[1].title == ""
 
 
+def test_qrels_skip_blanks_keep_the_higher_grade_and_reject_bad_rows(tmp_path: Path) -> None:
+    path = tmp_path / "test.tsv"
+    path.write_text(
+        "query-id\tcorpus-id\tscore\nq1\td1\t1\n\nq1\td1\t0\nq1\td2\t2\nq2\td9\t0\n",
+        encoding="utf-8",
+    )
+    assert load_qrels_tsv(path) == {"q1": {"d1": 1, "d2": 2}, "q2": {"d9": 0}}
+
+    empty = tmp_path / "empty.tsv"
+    empty.write_text("", encoding="utf-8")
+    with pytest.raises(ValueError, match="header"):
+        load_qrels_tsv(empty)
+
+    bad = tmp_path / "bad.tsv"
+    bad.write_text("query-id\tcorpus-id\tscore\nq\td\tnope\n", encoding="utf-8")
+    with pytest.raises(ValueError, match=r"bad\.tsv:2"):
+        load_qrels_tsv(bad)
+
+    negative = tmp_path / "neg.tsv"
+    negative.write_text("query-id\tcorpus-id\tscore\nq\td\t-1\n", encoding="utf-8")
+    with pytest.raises(ValueError, match=">= 0"):
+        load_qrels_tsv(negative)
+
+    labels_only = tmp_path / "none.tsv"
+    labels_only.write_text("query-id\tcorpus-id\tscore\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="no labelled"):
+        load_qrels_tsv(labels_only)
+
+
+def test_query_parquet_rejects_a_blank_and_a_duplicate(tmp_path: Path) -> None:
+    blank = tmp_path / "blank.parquet"
+    pq.write_table(pa.table({"_id": ["q"], "text": ["  "]}), blank)
+    with pytest.raises(ValueError, match="no text"):
+        load_scifact_queries(blank)
+    duplicate = tmp_path / "dup.parquet"
+    pq.write_table(pa.table({"_id": ["q", "q"], "text": ["one", "two"]}), duplicate)
+    with pytest.raises(ValueError, match="duplicate"):
+        load_scifact_queries(duplicate)
+
+
 def test_scifact_download_uses_the_pinned_dataset_revision(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict[str, object] = {}
 
@@ -87,3 +135,16 @@ def test_scifact_download_uses_the_pinned_dataset_revision(monkeypatch: pytest.M
     assert captured["repo_type"] == "dataset"
     assert captured["revision"] == SCIFACT_REVISION
     assert len(str(captured["revision"])) == 40
+
+    captured.clear()
+    monkeypatch.setattr("ssv2.loaders.scifact.hf_hub_download", fake_download)
+    download_scifact_queries()
+    assert captured["filename"] == SCIFACT_QUERIES_FILE
+    assert captured["revision"] == SCIFACT_REVISION
+
+    captured.clear()
+    download_scifact_qrels()
+    assert captured["repo_id"] == SCIFACT_QRELS_DATASET
+    assert captured["filename"] == SCIFACT_QRELS_FILE
+    assert captured["revision"] == SCIFACT_QRELS_REVISION
+    assert len(SCIFACT_QRELS_REVISION) == 40

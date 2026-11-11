@@ -109,9 +109,9 @@ Each phase ends with a gate. Don't start the next phase until the gate passes.
 - **Gate:** `ssv2 search` returns sensible results on SciFact, and the API serves them
 
 ### Phase 2: Evaluation harness (week 3)
-- [ ] Metric functions (recall@k, nDCG@k, MRR@k) with unit tests on hand-worked examples
-- [ ] `ssv2 eval` / `make eval` writes a JSON scorecard
-- [ ] CI eval job with the index cached between runs; fails below the nDCG@10 floor
+- [x] Metric functions (recall@k, nDCG@k, MRR@k) with unit tests on hand-worked examples
+- [x] `ssv2 eval` / `make eval` writes a JSON scorecard
+- [x] CI eval job with the index cached between runs; fails below the nDCG@10 floor
 - **Gate:** nDCG@10 on SciFact is close to the published score for the chosen model (record it in DECISIONS.md)
 
 ### Phase 3: MVP polish (week 4)
