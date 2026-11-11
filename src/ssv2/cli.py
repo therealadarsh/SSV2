@@ -17,6 +17,7 @@ from ssv2.embedding import Embedder
 from ssv2.evals.run import EVAL_K, score_retrieval, write_scorecard
 from ssv2.index import IndexManifestError, build_index
 from ssv2.latency import percentile
+from ssv2.loaders.arxiv import download_arxiv_shard, load_arxiv_shard
 from ssv2.loaders.jsonl import load_jsonl
 from ssv2.loaders.scifact import (
     download_scifact_corpus,
@@ -26,7 +27,8 @@ from ssv2.loaders.scifact import (
     load_scifact_corpus,
     load_scifact_queries,
 )
-from ssv2.retrieval import MAX_K, MIN_K, DenseRetriever, Hit
+from ssv2.retrieval import MAX_K, MIN_K, Hit
+from ssv2.retrievers import build_retriever
 
 _DATASET_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 EmbedderFactory = Callable[[Settings], Embedder]
@@ -72,6 +74,16 @@ def _parser() -> argparse.ArgumentParser:
         "--output", type=Path, default=None, help="Index directory (default: indexes/<dataset>)"
     )
 
+    arxiv = sources.add_parser("arxiv", help="Index CC BY 4.0 computer-science papers from arXiv")
+    arxiv.add_argument(
+        "--path", type=Path, default=None, help="Metadata parquet (default: pinned shard)"
+    )
+    arxiv.add_argument("--limit", type=int, default=2000, help="Maximum papers to index")
+    arxiv.add_argument(
+        "--category-prefix", default="cs.", help="Keep categories that start with this"
+    )
+    arxiv.add_argument("--output", type=Path, default=None, help="Index directory")
+
     search = subcommands.add_parser("search", help="Query an index")
     search.add_argument("query", help="The query text")
     search.add_argument("-k", type=int, default=10, help=f"Number of hits ({MIN_K}-{MAX_K})")
@@ -90,6 +102,12 @@ def _parser() -> argparse.ArgumentParser:
     )
     evaluate.add_argument("--output", type=Path, default=None, help="Scorecard JSON path")
     evaluate.add_argument("-k", type=int, default=EVAL_K, help=f"Cutoff (default {EVAL_K})")
+    evaluate.add_argument(
+        "--retriever",
+        choices=("dense", "hybrid", "rerank"),
+        default=None,
+        help="Override SSV2_RETRIEVER for this run",
+    )
 
     bench = subcommands.add_parser("bench", help="Measure search latency after one warmup query")
     bench.add_argument("--index", type=Path, default=None, help="Index directory")
@@ -107,6 +125,15 @@ def _index(args: argparse.Namespace, embedder_factory: EmbedderFactory) -> int:
     if args.source == "scifact":
         dataset = "scifact"
         documents = list(load_scifact_corpus(download_scifact_corpus()))
+    elif args.source == "arxiv":
+        dataset = "arxiv"
+        if args.limit < 1:
+            print("limit must be at least 1", file=sys.stderr)
+            return 2
+        shard = args.path if args.path is not None else download_arxiv_shard()
+        documents = list(
+            load_arxiv_shard(shard, category_prefix=args.category_prefix, limit=args.limit)
+        )
     else:
         dataset = str(args.dataset)
         if _DATASET_NAME.fullmatch(dataset) is None:
@@ -136,7 +163,7 @@ def _search(args: argparse.Namespace, embedder_factory: EmbedderFactory) -> int:
     if args.index is not None:
         settings = settings.model_copy(update={"index_dir": args.index})
     embedder = embedder_factory(settings)
-    hits = DenseRetriever(settings.index_dir, embedder, settings).search(query, args.k)
+    hits = build_retriever(settings.index_dir, embedder, settings).search(query, args.k)
     if args.json:
         print(json.dumps({"hits": [hit.model_dump(mode="json") for hit in hits]}, indent=2))
     else:
@@ -155,7 +182,9 @@ def _eval(args: argparse.Namespace, embedder_factory: EmbedderFactory) -> int:
         args.queries if args.queries is not None else download_scifact_queries()
     )
     qrels = load_qrels_tsv(args.qrels if args.qrels is not None else download_scifact_qrels())
-    retriever = DenseRetriever(settings.index_dir, embedder_factory(settings), settings)
+    if args.retriever is not None:
+        settings = settings.model_copy(update={"retriever": args.retriever})
+    retriever = build_retriever(settings.index_dir, embedder_factory(settings), settings)
     scorecard = score_retrieval(retriever, queries, qrels, dataset="scifact", k=args.k)
     destination = args.output if args.output is not None else settings.index_dir / "scorecard.json"
     write_scorecard(scorecard, destination)
@@ -187,7 +216,7 @@ def _bench(args: argparse.Namespace, embedder_factory: EmbedderFactory) -> int:
     settings = get_settings()
     if args.index is not None:
         settings = settings.model_copy(update={"index_dir": args.index})
-    retriever = DenseRetriever(settings.index_dir, embedder_factory(settings), settings)
+    retriever = build_retriever(settings.index_dir, embedder_factory(settings), settings)
     retriever.search(query, args.k)
     samples: list[float] = []
     for _ in range(args.n):

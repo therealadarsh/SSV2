@@ -1,5 +1,6 @@
 """Unit tests for the HTTP layer. No model, no index, no network: they run in milliseconds."""
 
+import datetime
 import json
 import logging
 from collections.abc import Iterator
@@ -137,6 +138,34 @@ def test_app_loads_an_index_and_searches_it(tmp_path: Path) -> None:
         found = client.post("/v1/search", json={"query": passage_text(document), "k": 1})
         assert found.status_code == 200
         assert found.json()["hits"][0]["id"] == "only"
+
+
+def test_search_returns_422_for_a_bad_date_filter(tmp_path: Path) -> None:
+    embedder = HashEmbedder()
+    document = Document(
+        id="only",
+        title="Only",
+        text="unique phrase",
+        source="fixture",
+        license="MIT",
+        date=datetime.date(2024, 1, 1),
+        metadata={"date": "2024-01-01"},
+    )
+    build_index([document], embedder, tmp_path, dataset="fixture")
+    settings = Settings(
+        embedding_model=embedder.model_id,
+        embedding_model_revision=embedder.revision,
+        index_dir=tmp_path,
+    )
+    app = create_app(settings, embedder=embedder)
+    with TestClient(app) as client:
+        bad = client.post("/v1/search", json={"query": "unique", "filters": {"date_from": "nope"}})
+        assert bad.status_code == 422
+        kept = client.post(
+            "/v1/search", json={"query": "unique", "filters": {"date_from": "2024-01-01"}}
+        )
+        assert kept.status_code == 200
+        assert kept.json()["hits"][0]["id"] == "only"
 
 
 def test_startup_refuses_an_index_from_another_model(tmp_path: Path) -> None:

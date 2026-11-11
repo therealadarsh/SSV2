@@ -30,6 +30,18 @@ class Settings(BaseSettings):
         default=Path("indexes/scifact"),
         description="Directory holding the built index (vectors, documents, manifest).",
     )
+    retriever: str = Field(
+        default="dense",
+        description="dense, hybrid (BM25 + dense via RRF), or rerank (cross-encoder).",
+    )
+    rerank_model: str = Field(
+        default="cross-encoder/ms-marco-MiniLM-L6-v2",
+        description="Cross-encoder used when retriever is rerank.",
+    )
+    rerank_model_revision: str = Field(
+        default="233902d25c440f23af6f7d6e94d2946bac0bee0a",
+        description="Full commit SHA of the cross-encoder.",
+    )
     embedding_model_dir: Path | None = Field(
         default=None,
         description=(
@@ -47,6 +59,22 @@ class Settings(BaseSettings):
             raise ValueError(
                 f"must be a full 40-character commit SHA, not a branch or tag name (got {value!r})"
             )
+        return value
+
+    @field_validator("rerank_model_revision")
+    @classmethod
+    def _rerank_revision_is_commit_sha(cls, value: str) -> str:
+        if not _COMMIT_SHA.fullmatch(value):
+            raise ValueError(
+                f"must be a full 40-character commit SHA, not a branch or tag name (got {value!r})"
+            )
+        return value
+
+    @field_validator("retriever")
+    @classmethod
+    def _known_retriever(cls, value: str) -> str:
+        if value not in {"dense", "hybrid", "rerank"}:
+            raise ValueError("retriever must be dense, hybrid, or rerank")
         return value
 
 

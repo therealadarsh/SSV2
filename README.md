@@ -63,7 +63,9 @@ Configuration comes from `SSV2_*` environment variables, all defined in
 - A generic ingestion pipeline: any corpus goes in through one document schema
 - `make eval` reports nDCG@10, recall@10 and MRR@10 on SciFact and fails under the floor
 - A search page at `/`, and one JSON log line per request with its duration
-- Still to come: hybrid search, reranking, and RAG
+- Optional hybrid search and cross-encoder reranking (`SSV2_RETRIEVER=hybrid` or `rerank`). On SciFact both score below the dense default, so the default stays dense
+- `ssv2 index arxiv` indexes CC BY 4.0 computer-science papers from a pinned metadata shard
+- Still to come: RAG
 
 ## Where it comes from
 
