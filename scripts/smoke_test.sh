@@ -51,6 +51,10 @@ check() { # check <path> <expected JSON field status>
 check /health ok
 check /ready ready
 
+page=$(curl -fsS "$BASE/")
+echo "GET / -> ${#page} bytes"
+python3 -c 'import sys; body = sys.argv[1]; assert "ssv2-search" in body, body[:200]' "$page"
+
 info=$(curl -fsS "$BASE/v1/info")
 echo "GET /v1/info -> $info"
 python3 -c 'import json, sys; b = json.loads(sys.argv[1]); assert b["dataset"] == "builtin", b; assert b["document_count"] == 4, b' \

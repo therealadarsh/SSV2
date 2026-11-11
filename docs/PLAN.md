@@ -115,10 +115,10 @@ Each phase ends with a gate. Don't start the next phase until the gate passes.
 - **Gate:** nDCG@10 on SciFact is close to the published score for the chosen model (record it in DECISIONS.md)
 
 ### Phase 3: MVP polish (week 4)
-- [ ] Minimal search page at `/`
-- [ ] Structured JSON logs with per-request timing; p95 latency measured
-- [ ] README, first release `v0.1.0`
-- **Gate:** every MVP criterion above is true
+- [x] Minimal search page at `/`
+- [x] Structured JSON logs with per-request timing; p95 latency measured
+- [x] README, first release `v0.1.0`
+- **Gate:** every MVP criterion above is true. Package version is `0.1.0`. The `v0.1.0` tag is pushed only after this commit is on `main` (tag protection).
 
 ### Phase 4: Better retrieval (weeks 5–6)
 - [ ] arXiv CS slice loader (CC BY 4.0 only) with date and category filters
