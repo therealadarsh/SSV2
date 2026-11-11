@@ -1,7 +1,8 @@
-# Release: pushing a version tag publishes the image to GitHub Container Registry.
+# Release: a version tag publishes the image to GitHub Container Registry.
 #   git tag v0.1.0 && git push origin v0.1.0
-# The full CI pipeline runs again on the tagged commit first; nothing is published unless it
-# passes. Release tags are protected by the "Protect release tags" ruleset.
+# Merging a change to .github/RELEASE does the same thing as the merging account
+# (see release-request.yml). CI runs on the tagged commit first; nothing is published
+# unless it passes. Release tags are protected by the "Protect release tags" ruleset.
 name: Release
 
 on:
@@ -17,54 +18,11 @@ jobs:
 
   publish:
     needs: ci
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    # Write access is granted to this job only, not to the CI jobs.
     permissions:
       contents: read
-      packages: write # push to ghcr.io
-      id-token: write # get an OIDC token to sign the provenance attestation
+      packages: write
+      id-token: write
       attestations: write
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      # Image names must be lowercase; repository names may not be.
-      - name: Set image name
-        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
-      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }} # short-lived; no personal token to manage
-      - name: Compute image tags and labels
-        id: meta
-        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
-        with:
-          images: ${{ env.IMAGE }}
-          # v1.2.3 -> 1.2.3, 1.2 and latest. Pre-releases (v1.2.3-rc.1) don't move `latest`.
-          tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-      - name: Build and push
-        id: build
-        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
-        with:
-          context: .
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          # The same layer cache CI filled, so this rebuild reuses the tested layers.
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          # Attach a software bill of materials (every package in the image) to the image.
-          sbom: true
-      # A signed record of which workflow, commit and repo built this exact image digest.
-      # Verify with: gh attestation verify oci://<image>:<tag> --repo <owner>/<repo>
-      - name: Attest build provenance
-        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
-        with:
-          subject-name: ${{ env.IMAGE }}
-          subject-digest: ${{ steps.build.outputs.digest }}
-          push-to-registry: true
+    uses: ./.github/workflows/publish-image.yml
+    with:
+      tag: ${{ github.ref_name }}
