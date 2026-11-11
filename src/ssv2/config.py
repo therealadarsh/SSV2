@@ -45,8 +45,8 @@ class Settings(BaseSettings):
         default=15.0, description="Price used to report output cost."
     )
     retriever: str = Field(
-        default="dense",
-        description="dense, hybrid (BM25 + dense via RRF), or rerank (cross-encoder).",
+        default="agent",
+        description="dense, hybrid, rerank, or agent (a second search when the first hit is weak).",
     )
     rerank_model: str = Field(
         default="cross-encoder/ms-marco-MiniLM-L6-v2",
@@ -87,8 +87,8 @@ class Settings(BaseSettings):
     @field_validator("retriever")
     @classmethod
     def _known_retriever(cls, value: str) -> str:
-        if value not in {"dense", "hybrid", "rerank"}:
-            raise ValueError("retriever must be dense, hybrid, or rerank")
+        if value not in {"dense", "hybrid", "rerank", "agent"}:
+            raise ValueError("retriever must be dense, hybrid, rerank, or agent")
         return value
 
     @field_validator("abstain_below", "input_usd_per_million", "output_usd_per_million")

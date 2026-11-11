@@ -28,6 +28,7 @@ from ssv2.loaders.scifact import (
     load_scifact_corpus,
     load_scifact_queries,
 )
+from ssv2.mcp_server import iter_responses
 from ssv2.retrieval import MAX_K, MIN_K, Hit
 from ssv2.retrievers import build_retriever
 
@@ -52,6 +53,8 @@ def main(
             return _bench(args, embedder_factory or _real_embedder)
         if args.command == "judge":
             return _judge(args)
+        if args.command == "mcp":
+            return _mcp(args, embedder_factory or _real_embedder)
         return _index(args, embedder_factory or _real_embedder)
     except (FileNotFoundError, IndexManifestError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
@@ -107,7 +110,7 @@ def _parser() -> argparse.ArgumentParser:
     evaluate.add_argument("-k", type=int, default=EVAL_K, help=f"Cutoff (default {EVAL_K})")
     evaluate.add_argument(
         "--retriever",
-        choices=("dense", "hybrid", "rerank"),
+        choices=("dense", "hybrid", "rerank", "agent"),
         default=None,
         help="Override SSV2_RETRIEVER for this run",
     )
@@ -120,6 +123,8 @@ def _parser() -> argparse.ArgumentParser:
     bench.add_argument(
         "--max-p95-ms", type=float, default=200.0, help="Exit 1 when p95 is above this"
     )
+
+    subcommands.add_parser("mcp", help="Serve search as an MCP tool on stdin/stdout")
 
     judge = subcommands.add_parser("judge", help="Score answers with the deterministic rubric")
     judge.add_argument("cases", type=Path, help="JSONL of query, answer, passages, expected")
@@ -244,6 +249,19 @@ def _bench(args: argparse.Namespace, embedder_factory: EmbedderFactory) -> int:
             file=sys.stderr,
         )
         return 1
+    return 0
+
+
+def _mcp(args: argparse.Namespace, embedder_factory: EmbedderFactory) -> int:
+    del args
+    settings = get_settings()
+    retriever = build_retriever(settings.index_dir, embedder_factory(settings), settings)
+
+    def search(query: str, k: int) -> list[Hit]:
+        return retriever.search(query, k)
+
+    for response in iter_responses(sys.stdin, search):
+        print(response, flush=True)
     return 0
 
 
