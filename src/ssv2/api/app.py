@@ -28,7 +28,8 @@ from ssv2.api.schemas import (
 )
 from ssv2.config import Settings, get_settings
 from ssv2.embedding import Embedder
-from ssv2.retrieval import DenseRetriever, Retriever
+from ssv2.retrieval import Retriever
+from ssv2.retrievers import build_retriever
 
 _access_log = logging.getLogger("ssv2.access")
 
@@ -54,7 +55,7 @@ def create_app(
             app.state.retriever = retriever
         else:
             model = embedder if embedder is not None else _load_model(settings)
-            app.state.retriever = DenseRetriever(settings.index_dir, model, settings)
+            app.state.retriever = build_retriever(settings.index_dir, model, settings)
         app.state.ready = True
         yield
         # Shutting down: report not-ready so a load balancer stops sending new requests while
@@ -111,7 +112,12 @@ def create_app(
     def search(body: SearchRequest, request: Request) -> SearchResponse:
         """Nearest documents by cosine similarity. `filters` keeps hits whose metadata matches."""
         _require_ready(request)
-        hits = request.app.state.retriever.search(body.query, body.k, body.filters)
+        try:
+            hits = request.app.state.retriever.search(body.query, body.k, body.filters)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
+            ) from exc
         return SearchResponse(hits=[SearchHit.model_validate(hit.model_dump()) for hit in hits])
 
     return app

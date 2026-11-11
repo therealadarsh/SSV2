@@ -5,6 +5,7 @@ That is cheap at SciFact size and stays correct. Approximate filtering can wait 
 the corpus is large enough that scoring all of it matters.
 """
 
+import datetime
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Protocol
@@ -70,7 +71,7 @@ class DenseRetriever:
                 f"docs.jsonl has {len(documents)}, faiss has {vector_index.ntotal}."
             )
         self.info = manifest
-        self._documents = documents
+        self.documents = documents
         self._index = vector_index
         self._embedder = embedder
 
@@ -86,10 +87,10 @@ class DenseRetriever:
         hits: list[Hit] = []
         for score, row in zip(scores[0], ids[0], strict=True):
             index = int(row)
-            if index < 0 or index >= len(self._documents):
+            if index < 0 or index >= len(self.documents):
                 continue
-            document = self._documents[index]
-            if active_filters and not _matches(document, active_filters):
+            document = self.documents[index]
+            if active_filters and not document_matches(document, active_filters):
                 continue
             hits.append(
                 Hit(
@@ -105,5 +106,35 @@ class DenseRetriever:
         return hits
 
 
-def _matches(document: Document, filters: Mapping[str, str]) -> bool:
-    return all(document.metadata.get(key) == value for key, value in filters.items())
+def document_matches(document: Document, filters: Mapping[str, str]) -> bool:
+    """Exact metadata equality, plus a date window and a category token.
+
+    ``date_from`` and ``date_to`` are inclusive ``YYYY-MM-DD`` bounds on
+    ``document.date``. A document with no date fails a date bound. ``category``
+    matches the primary category or any token in ``metadata["categories"]``.
+    Every other key is exact equality on metadata.
+    """
+    for key, value in filters.items():
+        if key == "date_from" or key == "date_to":
+            if not _date_in_bound(document.date, key, value):
+                return False
+        elif key == "category":
+            tokens = document.metadata.get("categories", "").split()
+            primary = document.metadata.get("category", "")
+            if value != primary and value not in tokens:
+                return False
+        elif document.metadata.get(key) != value:
+            return False
+    return True
+
+
+def _date_in_bound(day: datetime.date | None, key: str, value: str) -> bool:
+    if day is None:
+        return False
+    try:
+        bound = datetime.date.fromisoformat(value)
+    except ValueError as exc:
+        raise ValueError(f"{key} must be YYYY-MM-DD, not {value!r}") from exc
+    if key == "date_from":
+        return day >= bound
+    return day <= bound

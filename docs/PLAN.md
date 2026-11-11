@@ -121,10 +121,10 @@ Each phase ends with a gate. Don't start the next phase until the gate passes.
 - **Gate:** every MVP criterion above is true. Package version is `0.1.0`. The `v0.1.0` tag is pushed only after this commit is on `main` (tag protection).
 
 ### Phase 4: Better retrieval (weeks 5–6)
-- [ ] arXiv CS slice loader (CC BY 4.0 only) with date and category filters
-- [ ] Hybrid search: BM25 plus dense results, merged by reciprocal rank fusion
-- [ ] Cross-encoder reranking of the top 30
-- [ ] Compare each change on the eval: keep only improvements, and record each in DECISIONS.md
+- [x] arXiv CS slice loader (CC BY 4.0 only) with date and category filters
+- [x] Hybrid search: BM25 plus dense results, merged by reciprocal rank fusion
+- [x] Cross-encoder reranking of the top 30
+- [x] Compare each change on the eval: keep only improvements, and record each in DECISIONS.md. Dense stays the default (nDCG@10 0.7127 vs hybrid 0.7085 vs rerank 0.7039)
 
 ### Phase 5: RAG (weeks 7–9)
 - [ ] `POST /v1/ask`: retrieve, then send the passages to Claude with citations turned on, and stream the answer
