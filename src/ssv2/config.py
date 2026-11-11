@@ -30,6 +30,20 @@ class Settings(BaseSettings):
         default=Path("indexes/scifact"),
         description="Directory holding the built index (vectors, documents, manifest).",
     )
+    abstain_below: float = Field(
+        default=0.35,
+        description="Dense cosine floor. Weaker hits abstain. Other retrievers ignore it.",
+    )
+    anthropic_model: str = Field(
+        default="claude-sonnet-4-5",
+        description="Model id sent to the Anthropic messages API.",
+    )
+    input_usd_per_million: float = Field(
+        default=3.0, description="Price used to report input cost."
+    )
+    output_usd_per_million: float = Field(
+        default=15.0, description="Price used to report output cost."
+    )
     retriever: str = Field(
         default="dense",
         description="dense, hybrid (BM25 + dense via RRF), or rerank (cross-encoder).",
@@ -75,6 +89,13 @@ class Settings(BaseSettings):
     def _known_retriever(cls, value: str) -> str:
         if value not in {"dense", "hybrid", "rerank"}:
             raise ValueError("retriever must be dense, hybrid, or rerank")
+        return value
+
+    @field_validator("abstain_below", "input_usd_per_million", "output_usd_per_million")
+    @classmethod
+    def _non_negative(cls, value: float) -> float:
+        if value < 0:
+            raise ValueError("must be >= 0")
         return value
 
 

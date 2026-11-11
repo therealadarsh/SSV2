@@ -16,6 +16,7 @@ from ssv2.config import Settings, get_settings
 from ssv2.embedding import Embedder
 from ssv2.evals.run import EVAL_K, score_retrieval, write_scorecard
 from ssv2.index import IndexManifestError, build_index
+from ssv2.judge import RubricJudge, mean_judgements
 from ssv2.latency import percentile
 from ssv2.loaders.arxiv import download_arxiv_shard, load_arxiv_shard
 from ssv2.loaders.jsonl import load_jsonl
@@ -49,6 +50,8 @@ def main(
             return _eval(args, embedder_factory or _real_embedder)
         if args.command == "bench":
             return _bench(args, embedder_factory or _real_embedder)
+        if args.command == "judge":
+            return _judge(args)
         return _index(args, embedder_factory or _real_embedder)
     except (FileNotFoundError, IndexManifestError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
@@ -117,6 +120,9 @@ def _parser() -> argparse.ArgumentParser:
     bench.add_argument(
         "--max-p95-ms", type=float, default=200.0, help="Exit 1 when p95 is above this"
     )
+
+    judge = subcommands.add_parser("judge", help="Score answers with the deterministic rubric")
+    judge.add_argument("cases", type=Path, help="JSONL of query, answer, passages, expected")
     return parser
 
 
@@ -238,6 +244,25 @@ def _bench(args: argparse.Namespace, embedder_factory: EmbedderFactory) -> int:
             file=sys.stderr,
         )
         return 1
+    return 0
+
+
+def _judge(args: argparse.Namespace) -> int:
+    judgements = []
+    rubric = RubricJudge()
+    lines = args.cases.read_text(encoding="utf-8").splitlines()
+    for line_number, line in enumerate(lines, start=1):
+        if not line.strip():
+            continue
+        row = json.loads(line)
+        try:
+            judgements.append(
+                rubric.score(row["query"], row["answer"], row["passages"], row["expected"])
+            )
+        except KeyError as exc:
+            raise ValueError(f"{args.cases}:{line_number} is missing {exc}") from exc
+    summary = mean_judgements(judgements)
+    print(summary.model_dump_json(indent=2))
     return 0
 
 
