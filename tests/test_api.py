@@ -1,7 +1,10 @@
 """Unit tests for the HTTP layer. No model, no index, no network: they run in milliseconds."""
 
+import json
+import logging
 from collections.abc import Iterator
 from pathlib import Path
+from typing import cast
 
 import pytest
 from fastapi import FastAPI
@@ -150,3 +153,54 @@ def test_startup_refuses_an_index_from_another_model(tmp_path: Path) -> None:
     app = create_app(settings, embedder=embedder)
     with pytest.raises(IndexManifestError, match="other/model"), TestClient(app):
         pass
+
+
+def test_home_page_is_a_search_form(client: TestClient) -> None:
+    response = client.get("/")
+    assert response.status_code == 200
+    assert "text/html" in response.headers["content-type"]
+    page = response.text
+    assert 'id="ssv2-search"' in page
+    assert "novalidate" in page
+    assert 'id="query"' in page
+    assert "/v1/search" in page
+    assert "Enter a query." in page
+    assert "No results." in page
+    assert "textContent" in page
+    assert "x-request-duration-ms" in page
+
+
+def _access(caplog: pytest.LogCaptureFixture) -> list[dict[str, object]]:
+    return [json.loads(record.message) for record in caplog.records if record.name == "ssv2.access"]
+
+
+def test_requests_are_logged_as_json_with_timing(
+    client: TestClient, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.INFO, logger="ssv2.access")
+    response = client.get("/health")
+    assert response.status_code == 200
+    duration = float(response.headers["x-request-duration-ms"])
+    assert duration >= 0
+    health = _access(caplog)[-1]
+    assert health == {
+        "event": "request",
+        "method": "GET",
+        "path": "/health",
+        "status": 200,
+        "duration_ms": health["duration_ms"],
+    }
+    assert cast(float, health["duration_ms"]) >= 0
+
+    found = client.post("/v1/search", json={"query": "vitamin D secret", "k": 1})
+    assert found.status_code == 200
+    logged = _access(caplog)
+    assert "vitamin D secret" not in json.dumps(logged)
+    assert logged[-1]["path"] == "/v1/search"
+    assert logged[-1]["status"] == 200
+
+    missing = client.get("/missing")
+    assert missing.status_code == 404
+    logged = _access(caplog)
+    assert logged[-1]["path"] == "/missing"
+    assert logged[-1]["status"] == 404

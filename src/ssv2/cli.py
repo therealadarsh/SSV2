@@ -8,6 +8,7 @@ import argparse
 import json
 import re
 import sys
+import time
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
@@ -15,6 +16,7 @@ from ssv2.config import Settings, get_settings
 from ssv2.embedding import Embedder
 from ssv2.evals.run import EVAL_K, score_retrieval, write_scorecard
 from ssv2.index import IndexManifestError, build_index
+from ssv2.latency import percentile
 from ssv2.loaders.jsonl import load_jsonl
 from ssv2.loaders.scifact import (
     download_scifact_corpus,
@@ -43,6 +45,8 @@ def main(
             return _search(args, embedder_factory or _real_embedder)
         if args.command == "eval":
             return _eval(args, embedder_factory or _real_embedder)
+        if args.command == "bench":
+            return _bench(args, embedder_factory or _real_embedder)
         return _index(args, embedder_factory or _real_embedder)
     except (FileNotFoundError, IndexManifestError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
@@ -86,6 +90,15 @@ def _parser() -> argparse.ArgumentParser:
     )
     evaluate.add_argument("--output", type=Path, default=None, help="Scorecard JSON path")
     evaluate.add_argument("-k", type=int, default=EVAL_K, help=f"Cutoff (default {EVAL_K})")
+
+    bench = subcommands.add_parser("bench", help="Measure search latency after one warmup query")
+    bench.add_argument("--index", type=Path, default=None, help="Index directory")
+    bench.add_argument("--query", default="a scientific claim", help="Query to repeat")
+    bench.add_argument("-n", type=int, default=50, help="Timed searches, after one warmup")
+    bench.add_argument("-k", type=int, default=10, help=f"Hits per search ({MIN_K}-{MAX_K})")
+    bench.add_argument(
+        "--max-p95-ms", type=float, default=200.0, help="Exit 1 when p95 is above this"
+    )
     return parser
 
 
@@ -151,6 +164,48 @@ def _eval(args: argparse.Namespace, embedder_factory: EmbedderFactory) -> int:
         print(
             f"nDCG@{scorecard.k} {scorecard.ndcg_at_k:.4f} is below the floor "
             f"{scorecard.ndcg_at_10_floor:.4f}",
+            file=sys.stderr,
+        )
+        return 1
+    return 0
+
+
+def _bench(args: argparse.Namespace, embedder_factory: EmbedderFactory) -> int:
+    if args.n < 1:
+        print("n must be at least 1", file=sys.stderr)
+        return 2
+    if args.k < MIN_K or args.k > MAX_K:
+        print(f"k must be between {MIN_K} and {MAX_K}", file=sys.stderr)
+        return 2
+    query = str(args.query).strip()
+    if not query:
+        print("query must not be blank", file=sys.stderr)
+        return 2
+    if args.max_p95_ms <= 0:
+        print("max p95 must be positive", file=sys.stderr)
+        return 2
+    settings = get_settings()
+    if args.index is not None:
+        settings = settings.model_copy(update={"index_dir": args.index})
+    retriever = DenseRetriever(settings.index_dir, embedder_factory(settings), settings)
+    retriever.search(query, args.k)
+    samples: list[float] = []
+    for _ in range(args.n):
+        started = time.perf_counter()
+        retriever.search(query, args.k)
+        samples.append((time.perf_counter() - started) * 1000)
+    report = {
+        "n": args.n,
+        "k": args.k,
+        "p50_ms": percentile(samples, 50),
+        "p95_ms": percentile(samples, 95),
+        "p99_ms": percentile(samples, 99),
+        "max_ms": max(samples),
+    }
+    print(json.dumps(report, indent=2))
+    if report["p95_ms"] > args.max_p95_ms:
+        print(
+            f"p95 {report['p95_ms']:.1f} ms is above {args.max_p95_ms:.1f} ms",
             file=sys.stderr,
         )
         return 1

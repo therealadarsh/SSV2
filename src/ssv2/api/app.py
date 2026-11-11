@@ -7,12 +7,17 @@ Run locally with `make run`. In the container:
 no side effects, and each test can build an app with its own settings.
 """
 
-from collections.abc import AsyncIterator
+import json
+import logging
+import time
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request, Response, status
+from fastapi.responses import HTMLResponse
 
 from ssv2 import __version__
+from ssv2.api.page import SEARCH_PAGE
 from ssv2.api.schemas import (
     HealthResponse,
     InfoResponse,
@@ -24,6 +29,8 @@ from ssv2.api.schemas import (
 from ssv2.config import Settings, get_settings
 from ssv2.embedding import Embedder
 from ssv2.retrieval import DenseRetriever, Retriever
+
+_access_log = logging.getLogger("ssv2.access")
 
 
 def create_app(
@@ -57,6 +64,12 @@ def create_app(
     app = FastAPI(title="SSV2", version=__version__, lifespan=lifespan)
     app.state.settings = settings
     app.state.ready = False
+    app.middleware("http")(_access_log_middleware)
+
+    @app.get("/", response_class=HTMLResponse, include_in_schema=False)
+    def home() -> HTMLResponse:
+        """Minimal search page. It calls POST /v1/search and renders the hits."""
+        return HTMLResponse(SEARCH_PAGE)
 
     @app.get("/health", tags=["ops"])
     def health() -> HealthResponse:
@@ -102,6 +115,39 @@ def create_app(
         return SearchResponse(hits=[SearchHit.model_validate(hit.model_dump()) for hit in hits])
 
     return app
+
+
+async def _access_log_middleware(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
+    """One JSON line per request: method, path, status, and how long it took.
+
+    The query text stays out of the log. Duration is on the response as
+    ``x-request-duration-ms`` so the search page can show it.
+    """
+    started = time.perf_counter()
+    status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+    response: Response | None = None
+    try:
+        response = await call_next(request)
+        status_code = response.status_code
+    finally:
+        duration_ms = (time.perf_counter() - started) * 1000
+        _access_log.info(
+            json.dumps(
+                {
+                    "event": "request",
+                    "method": request.method,
+                    "path": request.url.path,
+                    "status": status_code,
+                    "duration_ms": round(duration_ms, 3),
+                }
+            )
+        )
+    if response is None:
+        raise RuntimeError("request produced no response")
+    response.headers["x-request-duration-ms"] = f"{duration_ms:.3f}"
+    return response
 
 
 def _require_ready(request: Request) -> None:

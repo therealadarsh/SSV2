@@ -1,6 +1,6 @@
 [project]
 name = "ssv2"
-version = "0.1.0.dev0"
+version = "0.1.0"
 description = "A retrieval service that measures its own quality."
 license = "MIT"
 # One Python minor version everywhere (local, CI, Docker). Upgrading is a deliberate change.
