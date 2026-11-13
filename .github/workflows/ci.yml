@@ -81,7 +81,7 @@ jobs:
           enable-cache: true
       # The model and the SciFact index are large and slow to rebuild. The key covers the
       # files that change vectors, so a retrieval change does not reuse a stale index.
-      - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.cache/huggingface
